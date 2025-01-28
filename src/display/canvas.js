@@ -896,7 +896,7 @@ class CanvasGraphics {
     const height = this.ctx.canvas.height;
 
     const savedFillStyle = this.ctx.fillStyle;
-    this.ctx.fillStyle = background || "#ffffff";
+    this.ctx.fillStyle = "transparent" || background || "#ffffff";
     this.ctx.fillRect(0, 0, width, height);
     this.ctx.fillStyle = savedFillStyle;
 
@@ -2119,6 +2119,8 @@ class CanvasGraphics {
     ctx.transform(...current.textMatrix);
     ctx.translate(current.x, current.y + current.textRise);
 
+    // console.log(string, current.x, current.y + current.textRise)
+    
     if (fontDirection > 0) {
       ctx.scale(textHScale, -1);
     } else {

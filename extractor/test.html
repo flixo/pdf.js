@@ -1,0 +1,741 @@
+<html>
+    <script type="importmap">
+        {
+          "imports": {
+            "pdfjs/": "../src/",
+            "pdfjs-lib": "../src/pdf.js",
+            "pdfjs-worker": "../src/pdf.worker.js",
+            "pdfjs-web/": "./",
+
+            "display-fetch_stream": "../src/display/fetch_stream.js",
+            "display-network": "../src/display/network.js",
+            "display-node_stream": "../src/display/stubs.js",
+            "display-node_utils": "../src/display/stubs.js"
+          }
+        }
+    </script>
+
+    <script type="module">
+        import * as pdfjsLib from "pdfjs-lib";
+        import { Box } from './geo-utils.mjs';
+
+        const distinctDebugColors = ["red","green","blue","yellow","purple","orange","cyan","magenta","lime","pink"]
+        const assignedDebugColors = new Map()
+
+        function floatColorToHex(color) {
+            return "#" + color.map(c => Math.round(c * 255).toString(16)).join("")
+        }
+
+
+        class TextBlockGeometry {
+          constructor(textLineGeometry) {
+            this.root = textLineGeometry
+            this.box = textLineGeometry.getBox()
+            this.boxExpanded = textLineGeometry.getBoxExpanded()
+            this.textLineGeometries = [textLineGeometry]
+          }
+
+          addGeometry(textLineGeometry) {
+            if (!this.textLineGeometries.includes(textLineGeometry)) {
+              this.textLineGeometries.push(textLineGeometry)
+            }
+            this.box = this.box.merge(textLineGeometry.getBox())
+            this.boxExpanded = this.boxExpanded.merge(textLineGeometry.getBoxExpanded())
+
+            textLineGeometry.block = this
+          }
+
+          getRootGeo() {
+            return this.textLineGeometries[0]
+          }
+
+          getBox() {
+            return this.box
+          }
+
+          processText() {
+
+          }
+
+          getBlockStructure() {
+            const block = document.createElement('block')
+            const refinedBox = this.getBox()
+            const rootGeo = this.getRootGeo()
+
+            // block.innerHTML = textSets.map(set => {
+            //   return ``
+            // }).join("")
+
+            block.classList.add('text-block')
+            block.style.position = 'absolute'
+            block.style.top = refinedBox.ymin + 'px'
+            block.style.left = refinedBox.xmin + 'px'
+            block.style.width = refinedBox.width + 'px'
+            block.style.height = refinedBox.height + 'px'
+
+            // var color = "black"
+            // if (assignedDebugColors.has(rootGeo.textProps.originalFontName)) {
+            //     color = assignedDebugColors.get(rootGeo.textProps.originalFontName)
+            // } else {
+            //     color = distinctDebugColors.shift()
+            //     assignedDebugColors.set(rootGeo.textProps.originalFontName, color)
+            // }
+            block.style.border = `2px dashed #f400ff`
+
+            return block
+          }
+        }
+
+        class TextLineGeometry {
+            constructor(geometry) {
+                this.root = geometry
+                this.box = geometry.getBox().clone()
+                this.boxExpanded = geometry.getBoxExpanded().clone()
+
+                this.geometries = [geometry]
+                this.block = null
+                this.textData = []
+                this.textPlain = ""
+            }
+
+            addGeometry(geometry) {
+                if (!this.geometries.includes(geometry)) {
+                    this.geometries.push(geometry)
+                }
+                this.boxExpanded = this.boxExpanded.merge(geometry.getBoxExpanded())
+                this.box = this.box.merge(geometry.getBox())
+                geometry.container = this
+            }
+
+            getRootGeo() {
+              return this.geometries[0]
+            }
+
+            getBox() {
+              return this.box
+            }
+
+            getBoxExpanded() {
+              const box = this.getBox().clone()
+              box.ymax += box.height * 0.5
+              box.ymin -= box.height * 0.5
+              return box
+            }
+
+            processText() {
+                this.geometries = this.geometries.sort((a, b) => a.bounds.top - b.bounds.top)
+
+                let textSets = []
+                let lastFont = this.geometries[0].textProps.originalFontName
+                let lastColor = floatColorToHex(this.geometries[0].textProps.textFill)
+                let currentText = {text: "", font: lastFont, color: lastColor }
+
+                for (const geo of this.geometries) {
+                  const e = geo.element
+                  const currentFont = geo.textProps.originalFontName
+                  const currentColor = geo.textProps.textFill
+
+                  if (currentColor && currentColor !== currentColor) { // Color has changed
+                    textSets.push(currentText)
+                    currentText = {
+                      text: e.textContent,
+                      font: currentFont,
+                      color: floatColorToHex(geo.textProps.textFill)
+                    }
+                    lastColor = currentColor
+                  } else if (currentFont && currentFont !== lastFont) { // Font chas changed
+                    textSets.push(currentText)
+                    currentText = {
+                      text: e.textContent,
+                      font: currentFont,
+                      color: floatColorToHex(geo.textProps.textFill)
+                    }
+                    lastFont = currentFont
+                  } else {
+                    currentText.text += e.textContent
+                  }
+                }
+
+                // Flush remaining text
+                textSets.push(currentText)
+
+                this.textData = textSets
+                this.textPlain = textSets.map(set => set.text).join("")
+            }
+
+            getLineStructure(textBlockGeometry) {
+                console.log(textBlockGeometry)
+                const line = document.createElement('section')
+
+                line.innerHTML = this.textData.map(set => {
+                  return `<span data-font="${set.font}" data-color="${set.color}">${set.text}</span>`
+                }).join("")
+
+
+                line.classList.add('text-line')
+                line.style.position = 'absolute'
+                line.style.top = this.box.ymin - textBlockGeometry.box.ymin  + 'px'
+                line.style.left = this.box.xmin - textBlockGeometry.box.xmin + 'px'
+                line.style.width = this.box.width + 'px'
+                line.style.height = this.box.height + 'px'
+
+                var color = "black"
+                if (assignedDebugColors.has(this.getRootGeo().textProps.originalFontName)) {
+                    color = assignedDebugColors.get(this.getRootGeo().textProps.originalFontName)
+                } else {
+                    color = distinctDebugColors.shift()
+                    assignedDebugColors.set(this.getRootGeo().textProps.originalFontName, color)
+                }
+                line.style.border = `1px solid ${color}`
+
+                return line
+            }
+        }
+
+        class TextGeometry {
+          constructor(element) {
+            this.element = element
+            this.textProps = element.textProps
+
+            console.log(element)
+            console.log(element.getBoundingClientRect())
+
+            this.bounds = element.getBoundingClientRect()
+            this.container = null
+
+            const [ymin, ymax, xmin, xmax] = [
+              this.bounds.top,
+              this.bounds.top + this.bounds.height * 0.9,
+              this.bounds.left,
+              this.bounds.left + this.bounds.width
+            ]
+
+            this.box = new Box(xmin, ymin, xmax, ymax)
+          }
+
+          recalculateBounds() {
+            this.bounds = this.element.getBoundingClientRect()
+          }
+
+          getBox() {
+            return this.box
+          }
+
+          getBoxExpanded() {
+            const expanded = this.box.clone()
+
+            // Exand box with by half of its height, ~ 0.75 characters
+            expanded.xmax += expanded.height * 0.5
+            expanded.xmin -= expanded.height * 0.5
+
+            // Collaps box vertically by half its height
+            expanded.ymax -= expanded.height * 0.25
+            expanded.ymin += expanded.height * 0.25
+            return expanded
+          }
+
+          getFontName() {
+            return this.textProps.originalFontName
+          }
+
+          getTextFill() {
+            if (this.textProps.textFill) {
+                return this.textProps.textFill.join(",")
+            } else {
+                return ""
+            }
+          }
+
+          hasContent() {
+            if (this.element.textContent.trim() == "")
+                return false
+
+            return true
+          }
+
+          isVertical() {
+            const x = this.textProps.transform[0]
+            const y = this.textProps.transform[1]
+
+            const angle = Math.round(Math.atan2(x, y) * (180/Math.PI))
+            console.log(angle)
+            if (angle == 0) {
+              return true
+            }
+
+            return false
+          }
+
+          getDebugRect() {
+            var color = "black"
+            if (assignedDebugColors.has(this.textProps.originalFontName)) {
+              color = assignedDebugColors.get(this.textProps.originalFontName)
+            } else {
+              color = distinctDebugColors.shift()
+              assignedDebugColors.set(this.textProps.originalFontName, color)
+            }
+
+            const div = document.createElement('div')
+
+            div.style.position = 'absolute'
+            div.style.top = this.expandedBox.ymin + 'px'
+            div.style.left = this.expandedBox.xmin + 'px'
+            div.style.width = this.expandedBox.width + 'px'
+            div.style.height = this.expandedBox.height + 'px'
+            div.style.border = `1px dotted ${color}`
+
+
+            this.element.style.color = "transparent"
+
+            return div
+          }
+        }
+
+
+        //const url = 'https://pdfobject.com/pdf/sample.pdf'
+        //const url = 'http://jentak-dev:8888/web/-644eba34e2b2ca2b6b42dd2f_Part30.pdf'
+        // const url = 'http://jentak-dev:8888/web/20200311_GL_pr_shareholders-letter_Q4_A4.pdf'
+        // const url = 'http://jentak-dev:8888/web/660d327bd041023260864b9c.pdf'
+        // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part19.pdf'
+        const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part80.pdf'
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '../src/pdf.worker.js'
+        pdfjsLib.getDocument({
+              url: url,
+              useSystemFonts: false,
+        }).promise.then(pdf => {
+            const pages = Array.from({ length: pdf.numPages }, (_, i) => i + 1)
+            const container = document.getElementById('pdf-container')
+            const textContainer = document.getElementById('pdf-text-container')
+
+            //pages.forEach(pageNumber => {
+                pdf.getPage(1).then(page => {
+                    const scale = 2.5
+                    const viewport = page.getViewport({ scale })
+
+                    const readableStream = page.streamTextContent({
+                        includeMarkedContent: true,
+                        disableNormalization: true,
+                    });
+
+                    const textDivProps = new WeakMap()
+                    const textDivs = []
+                    const textLayer = pdfjsLib.renderTextLayer({
+                        textContentSource: readableStream,
+                        container: textContainer,
+                        viewport: viewport,
+                        textDivs: textDivs,
+                        textDivProperties: textDivProps,
+                        isOffscreenCanvasSupported: false,
+                    });
+
+                    const sizeThresholdPercentual = 0.9
+                    textLayer.promise.then(() => {
+                      window.requestAnimationFrame(() => {
+
+                        const geometry = []
+                        let textLineGeometries = []
+
+                        textContainer.querySelectorAll('span[role="presentation"]').forEach(span => {
+                          geometry.push(
+                            new TextGeometry(span)
+                          )
+                        })
+
+
+
+
+
+
+
+
+                        for (const textGeometry of geometry) {
+                            if (textGeometry.isVertical())
+                              continue
+
+                            if (!textGeometry.hasContent()) {
+                              continue
+                            }
+                            // If not already assigned to a container
+                            if (textGeometry.container == null) {
+                              textGeometry.container = new TextLineGeometry(textGeometry)
+                            }
+
+
+                            for (const test of geometry) {
+                                // const sizeThreshold = textGeometry.container.root.getFontName() === test.getFontName() ? 4 : 1
+                                // const similarSize = Math.abs(textGeometry.container.root.bounds.height - test.bounds.height) < sizeThreshold
+                                const similarSize = Math.min(textGeometry.container.root.bounds.height, test.bounds.height) / Math.max(textGeometry.container.root.bounds.height, test.bounds.height) > sizeThresholdPercentual
+
+                                if (test == textGeometry || textGeometry.container == test.container) {
+                                    continue
+                                }
+
+                                if (test.container != null) {
+                                    continue
+                                }
+
+
+                                //Group only by same font
+                                // if (textGeometry.container.root.getFontName() !== test.getFontName()) {
+                                //     continue
+                                // }
+
+                                // if (textGeometry.hasContent()) {
+                                //   //console.log(textGeometry.element.textContent)
+                                // }
+
+                                //Group only by same color
+                                // if (textGeometry.hasContent() && textGeometry.container.root.getTextFill() !== test.getTextFill()) {
+                                //     continue
+                                // }
+
+                                //Group only by similar size
+                                if (!similarSize) {
+                                    continue
+                                }
+
+                                if (textGeometry.container.box.intersect(test.getBoxExpanded())) {
+                                    textGeometry.container.addGeometry(test)
+                                }
+                            }
+
+                            textLineGeometries.push(textGeometry.container)
+                        }
+
+
+                        const structure = document.createElement('section')
+
+                        structure.style.position = 'absolute'
+                        structure.style.top = '0'
+                        structure.style.left = '0'
+                        structure.style.width = viewport.width
+                        structure.style.height = viewport.height
+                        structure.style.border = '1px solid red'
+                        structure.style.zIndex = 1
+
+                        let textBlockGeometries = []
+
+                        // Filter textLineGeometries to unique containers
+                        textLineGeometries = textLineGeometries.filter((container, index, arr) =>
+                          arr.indexOf(container) === index
+                        )
+
+                        for (const textLineGeometry of textLineGeometries) {
+                          textLineGeometry.processText()
+                        }
+
+                        // for (const textLineGeometry of textLineGeometries) {
+                        //   structure.appendChild(textLineGeometry.getLineStructure())
+                        // }
+
+                        container.appendChild(structure)
+
+                        for (const textLineGeometry of textLineGeometries) {
+                          if (textLineGeometry.block == null) {
+                            textLineGeometry.block = new TextBlockGeometry(textLineGeometry)
+                          }
+
+                          for (const test of textLineGeometries) {
+                            const similarSize = Math.min(textLineGeometry.getBox().height, test.getBox().height) / Math.max(textLineGeometry.getBox().height, test.getBox().height) > sizeThresholdPercentual
+
+                            if (textLineGeometry == test || textLineGeometry.block == test.block) {
+                              continue
+                            }
+
+                            if (test.block != null) {
+                              continue
+                            }
+
+                            if (!similarSize) {
+                              continue
+                            }
+
+                            if (textLineGeometry.block.box.intersect(test.getBoxExpanded())) {
+                              textLineGeometry.block.addGeometry(test)
+                            }
+                          }
+
+                          textBlockGeometries.push(textLineGeometry.block)
+                        }
+
+
+                        textBlockGeometries = textBlockGeometries.filter((block, index, arr) =>
+                          arr.indexOf(block) === index
+                        )
+
+                        console.log(textBlockGeometries)
+
+
+                        for (const textBlockGeometry of textBlockGeometries) {
+                          const blockStructure = textBlockGeometry.getBlockStructure()
+
+                          for (const textLineGeometry of textBlockGeometry.textLineGeometries) {
+                            const ls = textLineGeometry.getLineStructure(textBlockGeometry)
+                            console.log(ls)
+                            blockStructure.appendChild(ls)
+                          }
+
+                          structure.appendChild(blockStructure)
+                        }
+
+
+
+                        //textContainer.appendChild(textLineGeometry.getLineStructure())
+
+                        // find all unique text geometry containers that intersect with each other
+                        // const textBlocks = []
+
+                        // for (const textLineGeometry of uniqueContainers) {
+                        //   for (const test of uniqueContainers) {
+                        //     if (textLineGeometry == test) {
+                        //       continue
+                        //     }
+
+                        //     if (textGeometry.container.box.intersect(test.getBoxExpanded())) {
+                        //       textBlocks.push([textLineGeometry, test])
+                        //     }
+                        //   }
+                        // }
+
+
+
+                        // for (const textLineGeometry of uniqueContainers) {
+                        //   textGeometry.container
+                        //   // textLineGeometry
+                        // }
+
+
+                        // const uniqueContainers = new Map()
+                        // for (const container of textLineGeometries) {
+                        //   if (uniqueContainers.has(container)) {
+                        //     uniqueContainers.get(container)
+                        //   } else {
+                        //     uniqueContainers.set(container, container)
+                        //   }
+                        // }
+
+
+
+                        // for (const textGeometry of geometry) {
+                        //   debug.appendChild(textGeometry.getDebugRect())
+                        // }
+
+
+                        console.log("Done")
+                      })
+                    })
+
+
+                    // await textLayer.promise
+
+                    const canvas = document.createElement('canvas')
+                    canvas.style.opacity = 1
+                    const context = canvas.getContext('2d')
+
+                    canvas.height = viewport.height
+                    canvas.width = viewport.width
+
+
+                    container.appendChild(canvas)
+                    container.appendChild(textContainer)
+
+                    page.render({
+                        canvasContext: context,
+                        viewport
+                    })
+                })
+            //})
+        })
+
+
+    </script>
+
+    <head>
+        <title>Test</title>
+    </head>
+    <body>
+        <div id="pdf-container">
+            <div id="pdf-text-container" class="textLayer"></div>
+        </div>
+    </body>
+    <style>
+
+        .text-line {
+          color: transparent;
+        }
+        .text-line-layout-container {
+            position: absolute;
+            pointer-events: none;
+        }
+
+        .text-line-geometry-container {
+            position: absolute;
+            border: 1px solid blue;
+        }
+        .text-line-geometry-container br {
+            display: contents;
+        }
+
+
+        span[role="presentation"] {
+            color: transparent !important;
+        }
+
+        :root {
+            --scale-factor: 2.5;
+        }
+
+        #pdf-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: fit-content;
+            height: fit-content;
+            position: relative;
+        }
+        #page {
+          transform: scale(3);
+          transform-origin: 0px 0px;
+        }
+        body {
+          margin: 0;
+          font-size: 12px;
+        }
+
+        em {
+          font-style: normal;
+          color: transparent;
+          position: absolute;
+        }
+
+        i {
+          position: absolute;
+        }
+
+        .wordLayer span {
+          position: absolute;
+          color: transparent;
+        }
+
+        .wordLayer span::after, em::after {
+          content: "";
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          top: 0;
+          left: 0;
+          /* border: 0.2px solid; */
+          border-color: inherit;
+          box-sizing: border-box;
+        }
+
+        .textLayer, .wordLayer {
+          position:absolute;
+          text-align:initial;
+          inset:0;
+          overflow:hidden;
+          z-index:2;
+          width: 100%;
+          height: 100%;
+        }
+
+        .textLayer {
+          /* display: none; */
+        }
+
+        .backgroundLayer {
+          width: 100%;
+          height: 100%;
+        }
+
+        .backgroundLayer img {
+          width: 100%;
+          height: 100%;
+
+        }
+
+        .textLayer :is(span, br){
+            position:absolute;
+            white-space:pre;
+            cursor:text;
+            transform-origin:0% 0%;
+          }
+
+        .textLayer span.markedContent{
+            top:0;
+            height:0;
+          }
+
+        .textLayer .highlight{
+            --highlight-bg-color:rgb(180 0 170);
+            --highlight-selected-bg-color:rgb(0 100 0);
+
+            margin:-1px;
+            padding:1px;
+            background-color:var(--highlight-bg-color);
+            border-radius:4px;
+          }
+
+        @media screen and (forced-colors: active){
+
+        .textLayer .highlight{
+              --highlight-bg-color:Highlight;
+              --highlight-selected-bg-color:ButtonText;
+          }
+        }
+
+        .textLayer .highlight.appended{
+              position:initial;
+            }
+
+        .textLayer .highlight.begin{
+              border-radius:4px 0 0 4px;
+            }
+
+        .textLayer .highlight.end{
+              border-radius:0 4px 4px 0;
+            }
+
+        .textLayer .highlight.middle{
+              border-radius:0;
+            }
+
+        .textLayer .highlight.selected{
+              background-color:var(--highlight-selected-bg-color);
+            }
+
+        .textLayer ::-moz-selection{
+            background:blue;
+            background:AccentColor;
+          }
+
+        .textLayer ::selection{
+            background:blue;
+            background:AccentColor;
+          }
+
+        .textLayer br::-moz-selection{
+            background:transparent;
+          }
+
+        .textLayer br::selection{
+            background:transparent;
+          }
+
+        .textLayer .endOfContent{
+            display:block;
+            position:absolute;
+            inset:100% 0 0;
+            z-index:-1;
+            cursor:default;
+            -webkit-user-select:none;
+               -moz-user-select:none;
+                    user-select:none;
+          }
+
+        .textLayer .endOfContent.active{
+              top:0;
+            }
+      </style>
+</html>
