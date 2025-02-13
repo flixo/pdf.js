@@ -258,7 +258,35 @@ function drawImageAtIntegerCoords(
     // For example if a == 1 && d == -1, it means that the image itself is
     // mirrored w.r.t. the x-axis.
     ctx.setTransform(Math.sign(a), 0, 0, Math.sign(d), rTlX, rTlY);
+    
+    // Here we can do stuff
+    const canvas = document.createElement("canvas")
+    const localCtx = canvas.getContext("2d")
+    canvas.width = srcW
+    canvas.height = srcH
+    localCtx.drawImage(srcImg, srcX, srcY, srcW, srcH)
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      console.log(url)
+      console.log('%c', [
+        'font-size: 1px;',
+        'line-height: ' + srcH + 'px;',
+        'padding: ' + srcH * .5 + 'px ' + srcW * .5 + 'px;',
+        'background-size: ' + srcW + 'px ' + srcH + 'px;',
+        'background: url(' + url + ');'
+      ].join(' '));
+    }, "image/jpeg", 0.95)
+
+    
+
+
     ctx.drawImage(srcImg, srcX, srcY, srcW, srcH, 0, 0, rWidth, rHeight);
+    
+
+
+
+    // ctx.fillStyle = "red"
+    // ctx.fillRect(srcX, srcY, rWidth, rHeight)
     ctx.setTransform(a, b, c, d, tx, ty);
 
     return [rWidth, rHeight];
@@ -1616,6 +1644,7 @@ class CanvasGraphics {
     let startX, startY;
     const currentTransform = getCurrentTransform(ctx);
 
+
     // Most of the time the current transform is a scaling matrix
     // so we don't need to transform points before computing min/max:
     // we can compute min/max first and then smartly "apply" the
@@ -1626,7 +1655,9 @@ class CanvasGraphics {
       (currentTransform[0] === 0 && currentTransform[3] === 0) ||
       (currentTransform[1] === 0 && currentTransform[2] === 0);
     const minMaxForBezier = isScalingMatrix ? minMax.slice(0) : null;
-
+    //console.log(ops)
+    const lineToCalls = []
+    const closeCalls = []
     for (let i = 0, j = 0, ii = ops.length; i < ii; i++) {
       switch (ops[i] | 0) {
         case OPS.rectangle:
@@ -1649,6 +1680,14 @@ class CanvasGraphics {
             current.updateRectMinMax(currentTransform, [x, y, xw, yh]);
           }
           ctx.closePath();
+          // Do stuff here.
+
+          // console.log("Filling with", ctx.fillStyle, ctx)
+          // ctx.strokeStyle = "yellow"
+          // ctx.lineWidth = 4
+          // ctx.stroke();
+          
+
           break;
         case OPS.moveTo:
           x = args[j++];
@@ -1659,8 +1698,10 @@ class CanvasGraphics {
           }
           break;
         case OPS.lineTo:
+          //console.log("Line to")
           x = args[j++];
           y = args[j++];
+          lineToCalls.push([x, y])
           ctx.lineTo(x, y);
           if (!isScalingMatrix) {
             current.updatePathMinMax(currentTransform, x, y);
@@ -1742,7 +1783,22 @@ class CanvasGraphics {
           break;
         case OPS.closePath:
           ctx.closePath();
+          closeCalls.push(true)
           break;
+      }
+
+      // Here we can do stuff
+      if (closeCalls.length == 0 && lineToCalls.length >= 1 && false) {
+        const firstStroke = lineToCalls[0]
+        const lastStroke = lineToCalls[lineToCalls.length - 1]
+        console.log(firstStroke, lastStroke)
+        // if (firstStroke[0] !== lastStroke[0] || firstStroke[1] !== lastStroke[1]) {
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = "red";
+          ctx.stroke()
+          console.log(lineToCalls, closeCalls)
+        // }
+
       }
     }
 

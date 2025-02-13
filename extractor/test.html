@@ -80,7 +80,7 @@
             //     color = distinctDebugColors.shift()
             //     assignedDebugColors.set(rootGeo.textProps.originalFontName, color)
             // }
-            block.style.border = `2px dashed #f400ff`
+            // block.style.border = `2px dashed #f400ff`
 
             return block
           }
@@ -164,7 +164,7 @@
             }
 
             getLineStructure(textBlockGeometry) {
-                console.log(textBlockGeometry)
+                //console.log(textBlockGeometry)
                 const line = document.createElement('section')
 
                 line.innerHTML = this.textData.map(set => {
@@ -197,8 +197,8 @@
             this.element = element
             this.textProps = element.textProps
 
-            console.log(element)
-            console.log(element.getBoundingClientRect())
+            //console.log(element)
+            //console.log(element.getBoundingClientRect())
 
             this.bounds = element.getBoundingClientRect()
             this.container = null
@@ -225,8 +225,8 @@
             const expanded = this.box.clone()
 
             // Exand box with by half of its height, ~ 0.75 characters
-            expanded.xmax += expanded.height * 0.5
-            expanded.xmin -= expanded.height * 0.5
+            expanded.xmax += expanded.height * 1.5
+            expanded.xmin -= expanded.height * 1.5
 
             // Collaps box vertically by half its height
             expanded.ymax -= expanded.height * 0.25
@@ -297,7 +297,8 @@
         // const url = 'http://jentak-dev:8888/web/20200311_GL_pr_shareholders-letter_Q4_A4.pdf'
         // const url = 'http://jentak-dev:8888/web/660d327bd041023260864b9c.pdf'
         // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part19.pdf'
-        const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part80.pdf'
+        //const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part80.pdf'
+        const url = 'http://localhost:8888/web/stuff/660d327bd041023260864b9c_Part30.pdf'
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = '../src/pdf.worker.js'
         pdfjsLib.getDocument({
@@ -341,13 +342,6 @@
                             new TextGeometry(span)
                           )
                         })
-
-
-
-
-
-
-
 
                         for (const textGeometry of geometry) {
                             if (textGeometry.isVertical())
@@ -464,7 +458,7 @@
                           arr.indexOf(block) === index
                         )
 
-                        console.log(textBlockGeometries)
+                        //console.log(textBlockGeometries)
 
 
                         for (const textBlockGeometry of textBlockGeometries) {
@@ -472,7 +466,7 @@
 
                           for (const textLineGeometry of textBlockGeometry.textLineGeometries) {
                             const ls = textLineGeometry.getLineStructure(textBlockGeometry)
-                            console.log(ls)
+                            //console.log(ls)
                             blockStructure.appendChild(ls)
                           }
 
@@ -560,6 +554,17 @@
         </div>
     </body>
     <style>
+        .text-block {
+          &::after {
+            content: "";
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            right: -10px;
+            bottom: -10px;
+            border: 2px dashed #f400ff;
+          }  
+        }
 
         .text-line {
           color: transparent;
