@@ -218,6 +218,17 @@ class CachedCanvases {
   }
 }
 
+function rotatePoint(x, y, cx, cy, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  const nx = cx + (x - cx) * cos - (y - cy) * sin;
+  const ny = cy + (x - cx) * sin + (y - cy) * cos;
+
+  return { x: nx, y: ny };
+}
+
+
 function drawImageAtIntegerCoords(
   ctx,
   srcImg,
@@ -257,39 +268,16 @@ function drawImageAtIntegerCoords(
     // We must apply a transformation in order to apply it on the image itself.
     // For example if a == 1 && d == -1, it means that the image itself is
     // mirrored w.r.t. the x-axis.
+    // console.log("Drawing image at", rTlX, rTlY, rWidth, rHeight)
     ctx.setTransform(Math.sign(a), 0, 0, Math.sign(d), rTlX, rTlY);
-    
-    // Here we can do stuff
-    const canvas = document.createElement("canvas")
-    const localCtx = canvas.getContext("2d")
-    canvas.width = srcW
-    canvas.height = srcH
-    localCtx.drawImage(srcImg, srcX, srcY, srcW, srcH)
-    canvas.toBlob(blob => {
-      const url = URL.createObjectURL(blob);
-      console.log(url)
-      console.log('%c', [
-        'font-size: 1px;',
-        'line-height: ' + srcH + 'px;',
-        'padding: ' + srcH * .5 + 'px ' + srcW * .5 + 'px;',
-        'background-size: ' + srcW + 'px ' + srcH + 'px;',
-        'background: url(' + url + ');'
-      ].join(' '));
-    }, "image/jpeg", 0.95)
-
-    
-
 
     ctx.drawImage(srcImg, srcX, srcY, srcW, srcH, 0, 0, rWidth, rHeight);
-    
-
-
-
     // ctx.fillStyle = "red"
     // ctx.fillRect(srcX, srcY, rWidth, rHeight)
     ctx.setTransform(a, b, c, d, tx, ty);
 
-    return [rWidth, rHeight];
+
+    return [rWidth, rHeight, rTlX, rTlY];
   }
 
   if (a === 0 && d === 0) {
@@ -307,7 +295,7 @@ function drawImageAtIntegerCoords(
     ctx.drawImage(srcImg, srcX, srcY, srcW, srcH, 0, 0, rHeight, rWidth);
     ctx.setTransform(a, b, c, d, tx, ty);
 
-    return [rHeight, rWidth];
+    return [rHeight, rWidth, rTlX, rTlY];
   }
 
   // Not a scale matrix so let the render handle the case without rounding.
@@ -315,7 +303,22 @@ function drawImageAtIntegerCoords(
 
   const scaleX = Math.hypot(a, b);
   const scaleY = Math.hypot(c, d);
-  return [scaleX * destW, scaleY * destH];
+
+  console.log("DRAW IMG", getCurrentTransform(ctx))
+
+  const w = (scaleX * destW)
+  const h = (scaleY * destH)
+  const rad = Math.atan2(b, a);
+  console.log("RAD", rad)
+  console.log(destX, destY)
+
+  const out = rotatePoint(tx, ty, tx, ty, rad)
+
+  //newX = X2 * cos(90 - Angle) - Y2 * sin(90 - Angle);
+  //newY = X2 * sin(90 - Angle) + Y2 * cos(90 - Angle);
+
+
+  return [w, h, tx + (scaleX * destX), ty + (scaleY * destY)];
 }
 
 function compileType3Glyph(imgData) {
@@ -1686,7 +1689,7 @@ class CanvasGraphics {
           // ctx.strokeStyle = "yellow"
           // ctx.lineWidth = 4
           // ctx.stroke();
-          
+
 
           break;
         case OPS.moveTo:
@@ -2176,7 +2179,7 @@ class CanvasGraphics {
     ctx.translate(current.x, current.y + current.textRise);
 
     // console.log(string, current.x, current.y + current.textRise)
-    
+
     if (fontDirection > 0) {
       ctx.scale(textHScale, -1);
     } else {
@@ -2915,6 +2918,7 @@ class CanvasGraphics {
     if (!this.contentVisible) {
       return;
     }
+
     const imgData = this.getObject(objId);
     if (!imgData) {
       warn("Dependent image isn't ready yet");
@@ -3032,9 +3036,80 @@ class CanvasGraphics {
       imgData.interpolate
     );
 
-    drawImageAtIntegerCoords(
+
+    const tmpCanvas = document.createElement('canvas')
+          tmpCanvas.height = scaled.img.height
+          tmpCanvas.width = scaled.img.width
+
+    const tmpCtx = tmpCanvas.getContext('2d')
+    tmpCtx.drawImage(scaled.img, 0, 0)
+    // tmpCtx.fillStyle="rgba(255, 0, 0, 0.5)"
+    // tmpCtx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height)
+
+    const data = tmpCtx.getImageData(0, 0, tmpCanvas.width, tmpCanvas.height)
+
+    // Make all white pixels transparent
+    //Generate random color
+    // const boundingBox = [[tmpCanvas.width/2,tmpCanvas.height/2],[tmpCanvas.width/2,tmpCanvas.height/2]]
+    const rnd = [Math.floor(Math.random() * 256), Math.floor(Math.random() * 256), Math.floor(Math.random() * 256)]
+
+    let smallestX = Infinity
+    let smallestY = Infinity
+    let largestX = -Infinity
+    let largestY = -Infinity
+
+    for (let i = 0; i < data.data.length; i += 4) {
+      if (data.data[i] > 254 && data.data[i + 1] > 254 && data.data[i + 2] > 254) {
+        data.data[i + 0] = 0
+        data.data[i + 1] = 255
+        data.data[i + 2] = 0
+        data.data[i + 3] = 255
+      } else {
+        data.data[i] = rnd[0]
+        data.data[i + 1] = rnd[1]
+        data.data[i + 2] = rnd[2]
+
+        //Update bounding box
+        const x = (i / 4) % tmpCanvas.width
+        const y = Math.floor((i / 4) / tmpCanvas.width)
+
+        if (x < smallestX) {
+          smallestX = x
+        }
+
+        if (x > largestX) {
+          largestX = x
+        }
+
+        if (y < smallestY) {
+          smallestY = y
+        }
+
+        if (y > largestY) {
+          largestY = y
+        }
+      }
+    }
+
+
+    tmpCtx.putImageData(data, 0, 0)
+
+    //Draw bounding box
+    tmpCtx.strokeStyle = "red"
+    tmpCtx.lineWidth = 2
+    tmpCtx.strokeRect(smallestX, smallestY, 100, 100)
+
+
+    tmpCanvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      console.log("TMPCANVAS", url)
+    }, "image/png")
+
+    console.log(scaled.img)
+
+    const [w,h,x,y] = drawImageAtIntegerCoords(
       ctx,
-      scaled.img,
+      tmpCanvas,
       0,
       0,
       scaled.paintWidth,
@@ -3044,8 +3119,24 @@ class CanvasGraphics {
       width,
       height
     );
+
+
+    // ctx.fillStyle = "red"
+    // ctx.fillRect(x, y, w, h)
+
+
+    // Extract here?
+    // Here we can do stuff
+    window.imageDrawCalls = window.imageDrawCalls || []
+
+    window.imageDrawCalls.push({
+      imageData: imgData,
+      x: x, y: y, w: w, h: h
+    })
+
     this.compose();
     this.restore();
+
   }
 
   paintInlineImageXObjectGroup(imgData, map) {

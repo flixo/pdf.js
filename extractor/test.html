@@ -225,8 +225,15 @@
             const expanded = this.box.clone()
 
             // Exand box with by half of its height, ~ 0.75 characters
-            expanded.xmax += expanded.height * 1.5
-            expanded.xmin -= expanded.height * 1.5
+
+
+            if (this.content().trim().match(/^\d+$/)) {
+              expanded.xmax += expanded.height * 2
+              expanded.xmin -= expanded.height * 2
+            } else {
+              expanded.xmax += expanded.height * 0.5
+              expanded.xmin -= expanded.height * 0.5
+            }
 
             // Collaps box vertically by half its height
             expanded.ymax -= expanded.height * 0.25
@@ -246,6 +253,10 @@
             }
           }
 
+          content() {
+            return this.element.textContent
+          }
+
           hasContent() {
             if (this.element.textContent.trim() == "")
                 return false
@@ -253,17 +264,29 @@
             return true
           }
 
-          isVertical() {
+          angle() {
             const x = this.textProps.transform[0]
             const y = this.textProps.transform[1]
 
-            const angle = Math.round(Math.atan2(x, y) * (180/Math.PI))
-            console.log(angle)
-            if (angle == 0) {
-              return true
-            }
+            return Math.round(Math.atan2(x, y) * (180/Math.PI))
+          }
 
-            return false
+
+          isVertical() {
+            // const x = this.textProps.transform[0]
+            // const y = this.textProps.transform[1]
+
+            // const angle = Math.round(Math.atan2(x, y) * (180/Math.PI))
+            // console.log(angle)
+            // if (angle == 0) {
+            //   return true
+            // }
+
+            return this.angle() == 0
+          }
+
+          isHorizontal() {
+            return this.angle() == 90
           }
 
           getDebugRect() {
@@ -298,7 +321,8 @@
         // const url = 'http://jentak-dev:8888/web/660d327bd041023260864b9c.pdf'
         // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part19.pdf'
         //const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part80.pdf'
-        const url = 'http://localhost:8888/web/stuff/660d327bd041023260864b9c_Part30.pdf'
+        // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part35.pdf'
+        const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part53.pdf'
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = '../src/pdf.worker.js'
         pdfjsLib.getDocument({
@@ -313,6 +337,71 @@
                 pdf.getPage(1).then(page => {
                     const scale = 2.5
                     const viewport = page.getViewport({ scale })
+
+                    const pdfCanvas = document.createElement('canvas')
+                          pdfCanvas.height = viewport.height
+                          pdfCanvas.width = viewport.width
+
+                    const context = pdfCanvas.getContext('2d')
+                    // canvas.style.opacity = 1
+
+                    const structure = document.createElement('section')
+
+                    structure.style.position = 'absolute'
+                    structure.style.top = '0'
+                    structure.style.left = '0'
+                    structure.style.width = viewport.width
+                    structure.style.height = viewport.height
+                    structure.style.border = '1px solid red'
+                    structure.style.zIndex = 1
+
+                    container.appendChild(pdfCanvas)
+                    container.appendChild(textContainer)
+
+                    window.imageDrawCalls = []
+                    const render = page.render({
+                        canvasContext: context,
+                        viewport
+                    })
+
+                    render.promise.then(() => {
+                      console.log("Did render")
+                      for (const i of window.imageDrawCalls) {
+                        const fillRate = (i.w * i.h) / (pdfCanvas.width * pdfCanvas.height)
+                        if (fillRate > 0.8) {
+                          // continue
+                        }
+
+                        const canvas = document.createElement("canvas")
+                        const localCtx = canvas.getContext("2d")
+                        canvas.width = i.imageData.bitmap.width
+                        canvas.height = i.imageData.bitmap.height
+                        localCtx.drawImage(i.imageData.bitmap, 0, 0, canvas.width, canvas.height)
+
+                        const imageElement = document.createElement("img")
+
+                        imageElement.style.position = 'absolute'
+                        imageElement.style.top = i.y
+                        imageElement.style.left = i.x
+                        imageElement.style.width = i.w
+                        imageElement.style.height = i.h
+
+
+                        // structure.appendChild(imageElement)
+
+                        canvas.toBlob(blob => {
+                          const url = URL.createObjectURL(blob);
+                          imageElement.src = url
+                          // console.log(imgData.ref)
+                          // console.log(x,y,w,h)
+                          console.log(url)
+                          console.log(i)
+
+                        }, "image/png")
+                      }
+                    })
+
+                    // Text render
 
                     const readableStream = page.streamTextContent({
                         includeMarkedContent: true,
@@ -344,7 +433,7 @@
                         })
 
                         for (const textGeometry of geometry) {
-                            if (textGeometry.isVertical())
+                            if (!textGeometry.isHorizontal())
                               continue
 
                             if (!textGeometry.hasContent()) {
@@ -398,15 +487,6 @@
                         }
 
 
-                        const structure = document.createElement('section')
-
-                        structure.style.position = 'absolute'
-                        structure.style.top = '0'
-                        structure.style.left = '0'
-                        structure.style.width = viewport.width
-                        structure.style.height = viewport.height
-                        structure.style.border = '1px solid red'
-                        structure.style.zIndex = 1
 
                         let textBlockGeometries = []
 
@@ -473,49 +553,6 @@
                           structure.appendChild(blockStructure)
                         }
 
-
-
-                        //textContainer.appendChild(textLineGeometry.getLineStructure())
-
-                        // find all unique text geometry containers that intersect with each other
-                        // const textBlocks = []
-
-                        // for (const textLineGeometry of uniqueContainers) {
-                        //   for (const test of uniqueContainers) {
-                        //     if (textLineGeometry == test) {
-                        //       continue
-                        //     }
-
-                        //     if (textGeometry.container.box.intersect(test.getBoxExpanded())) {
-                        //       textBlocks.push([textLineGeometry, test])
-                        //     }
-                        //   }
-                        // }
-
-
-
-                        // for (const textLineGeometry of uniqueContainers) {
-                        //   textGeometry.container
-                        //   // textLineGeometry
-                        // }
-
-
-                        // const uniqueContainers = new Map()
-                        // for (const container of textLineGeometries) {
-                        //   if (uniqueContainers.has(container)) {
-                        //     uniqueContainers.get(container)
-                        //   } else {
-                        //     uniqueContainers.set(container, container)
-                        //   }
-                        // }
-
-
-
-                        // for (const textGeometry of geometry) {
-                        //   debug.appendChild(textGeometry.getDebugRect())
-                        // }
-
-
                         console.log("Done")
                       })
                     })
@@ -523,21 +560,7 @@
 
                     // await textLayer.promise
 
-                    const canvas = document.createElement('canvas')
-                    canvas.style.opacity = 1
-                    const context = canvas.getContext('2d')
 
-                    canvas.height = viewport.height
-                    canvas.width = viewport.width
-
-
-                    container.appendChild(canvas)
-                    container.appendChild(textContainer)
-
-                    page.render({
-                        canvasContext: context,
-                        viewport
-                    })
                 })
             //})
         })
@@ -558,12 +581,16 @@
           &::after {
             content: "";
             position: absolute;
-            top: -10px;
-            left: -10px;
-            right: -10px;
-            bottom: -10px;
-            border: 2px dashed #f400ff;
-          }  
+            top: -5px;
+            left: -5px;
+            right: -5px;
+            bottom: -5px;
+            border: 2px dashed rgb(0, 255, 0);
+          }
+        }
+
+        section img {
+          border: 2px solid rgb(255, 145, 0);
         }
 
         .text-line {
