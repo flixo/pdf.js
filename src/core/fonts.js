@@ -101,6 +101,8 @@ const EXPORT_DATA_PROPERTIES = [
   "systemFontInfo",
   "type",
   "vertical",
+  "rawFont",
+  "availableChars"
 ];
 
 const EXPORT_DATA_EXTRA_PROPERTIES = [
@@ -583,6 +585,7 @@ function getRanges(glyphs, toUnicodeExtraMap, numGlyphs) {
 }
 
 function createCmapTable(glyphs, toUnicodeExtraMap, numGlyphs) {
+  // console.log(glyphs.map(g => String.fromCharCode(g)).join(""));
   const ranges = getRanges(glyphs, toUnicodeExtraMap, numGlyphs);
   const numTables = ranges.at(-1)[1] > 0xffff ? 2 : 1;
   let cmap =
@@ -951,6 +954,14 @@ function createNameTable(name, proto) {
  */
 class Font {
   constructor(name, file, properties) {
+    if (!properties.rawFont) {
+      this.rawFont = new Font(name, file, {...properties, rawFont: true})
+    } else {
+      this.isRawFont = true
+    }
+
+    file.pos = 0
+
     this.name = name;
     this.psName = null;
     this.mimetype = null;
@@ -1114,6 +1125,8 @@ class Font {
     this.defaultWidth = properties.defaultWidth;
     this.toUnicode = properties.toUnicode;
     this.seacMap = properties.seacMap;
+
+    console.log(this)
   }
 
   get renderer() {
@@ -3115,16 +3128,20 @@ class Font {
 
     // When `cssFontInfo` is set, the font is used to render text in the HTML
     // view (e.g. with Xfa) so nothing must be moved in the private use area.
+
+    // Modified
     if (!properties.cssFontInfo) {
-      newMapping = adjustMapping(
-        mapping,
-        font.hasGlyphId.bind(font),
-        glyphZeroId,
-        this.toUnicode
-      );
-      this.toFontChar = newMapping.toFontChar;
-      newCharCodeToGlyphId = newMapping.charCodeToGlyphId;
-      toUnicodeExtraMap = newMapping.toUnicodeExtraMap;
+      if (!this.isRawFont) {
+        newMapping = adjustMapping(
+          mapping,
+          font.hasGlyphId.bind(font),
+          glyphZeroId,
+          this.toUnicode
+        );
+        this.toFontChar = newMapping.toFontChar;
+        newCharCodeToGlyphId = newMapping.charCodeToGlyphId;
+        toUnicodeExtraMap = newMapping.toUnicodeExtraMap;
+      }
     }
     const numGlyphs = font.numGlyphs;
 
@@ -3204,10 +3221,22 @@ class Font {
     builder.addTable("CFF ", font.data);
     // OS/2 and Windows Specific metrics
     builder.addTable("OS/2", createOS2Table(properties, newCharCodeToGlyphId));
+
+
+    // console.log(Object.keys(glyphs).map(g => String.fromCharCode(g)).join(""))
+    // console.log(Object.values(glyphs).map(g => String.fromCharCode(g)).join(""))
+
+    if (this.isRawFont){
+      this.availableChars = Object.entries(newCharCodeToGlyphId).filter(([k, v]) => v != 0).map(([k, v]) => String.fromCharCode(k)).join("")
+      console.log(this.availableChars)
+    }
+
     // Character to glyphs mapping
+    const cmapTable = createCmapTable(newCharCodeToGlyphId, toUnicodeExtraMap, numGlyphs)
+
     builder.addTable(
       "cmap",
-      createCmapTable(newCharCodeToGlyphId, toUnicodeExtraMap, numGlyphs)
+      cmapTable
     );
     // Font header
     builder.addTable(

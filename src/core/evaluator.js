@@ -1757,7 +1757,7 @@ class PartialEvaluator {
 
         switch (fn | 0) {
           case OPS.paintXObject:
-            
+
           // Toggle images
             // continue
             // eagerly compile XForm objects
@@ -3012,10 +3012,10 @@ class PartialEvaluator {
           textContentItem.height * textContentItem.textAdvanceScale;
       }
 
-      
+
       const textState = _textState.clone()
       const textItem = runBidiTransform(textContentItem)
-      
+
       // console.log("Flush", textState)
 
       textItem.textFill = [...textState.textFill]
@@ -3057,13 +3057,10 @@ class PartialEvaluator {
       };
       task.ensureNotTerminated();
       timeSlotManager.reset();
-
-      
       const opsmap = Object.entries(OPS).reduce((acc, [key, value]) => {
         acc[value] = key
         return acc
       })
-      
 
       const operation = {};
       let stop,
@@ -3080,16 +3077,16 @@ class PartialEvaluator {
 
         const previousState = textState;
         textState = stateManager.state;
-        
+
         //Todo. Store font extras from state.
         //console.log(textState)
-        
+
         const fn = operation.fn;
         args = operation.args;
-        
+
         //Debug ops
         //console.log(opsmap[fn])
-        
+
 
         switch (fn | 0) {
           case OPS.setFont:
@@ -4554,6 +4551,11 @@ class PartialEvaluator {
     const newProperties = await this.extractDataStructures(dict, properties);
     this.extractWidths(dict, descriptor, newProperties);
 
+    if (properties.name == "WJRBNK+Prelo-Bold") {
+      console.log(dict)
+      console.log(fontFile)
+    }
+
     return new Font(fontName.name, fontFile, newProperties);
   }
 
@@ -4603,6 +4605,10 @@ class PartialEvaluator {
 
 class TranslatedFont {
   constructor({ loadedName, font, dict, evaluatorOptions }) {
+    if (font.name == "WJRBNK+Prelo-Bold") {
+      console.log("TranslatedFont", loadedName, font, dict, evaluatorOptions);
+    }
+
     this.loadedName = loadedName;
     this.font = font;
     this.dict = dict;

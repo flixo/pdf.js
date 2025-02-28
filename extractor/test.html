@@ -22,6 +22,67 @@
         const distinctDebugColors = ["red","green","blue","yellow","purple","orange","cyan","magenta","lime","pink"]
         const assignedDebugColors = new Map()
 
+
+
+        function downloadURL(data, fileName) {
+          var a;
+          a = document.createElement('a');
+          a.href = data;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.style = 'display: none';
+          a.click();
+          a.remove();
+        };
+
+        class UniqueColorGenerator {
+          constructor() {
+            this.counter = 0;
+            this.colors = this.generateColors();
+          }
+
+          generateColors() {
+            let colors = [];
+            for (let i = 0; i < 500; i++) {
+              // Huse should be shades of blue only
+              // let hue = 200 + Math.random() * 20;
+              let hue = Math.random() * 360;
+              let saturation = 60 + Math.random() * 40;
+              let lightness = 30 + Math.random() * 40;
+              colors.push(this.hslToRgb(hue, saturation, lightness));
+            }
+            return colors;
+          }
+
+          hslToRgb(h, s, l) {
+            s /= 100;
+            l /= 100;
+            let c = (1 - Math.abs(2 * l - 1)) * s;
+            let x = c * (1 - Math.abs((h / 60) % 2 - 1));
+            let m = l - c / 2;
+            let r = 0, g = 0, b = 0;
+
+            if (h < 60) { r = c; g = x; b = 0; }
+            else if (h < 120) { r = x; g = c; b = 0; }
+            else if (h < 180) { r = 0; g = c; b = x; }
+            else if (h < 240) { r = 0; g = x; b = c; }
+            else if (h < 300) { r = x; g = 0; b = c; }
+            else { r = c; g = 0; b = x; }
+
+            return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+          }
+
+          nextColor() {
+            if (this.counter >= this.colors.length) this.counter = 0;
+            return this.colors[this.counter++];
+          }
+
+          resetCounter() {
+            this.counter = 0;
+          }
+        }
+
+
         function floatColorToHex(color) {
             return "#" + color.map(c => Math.round(c * 255).toString(16)).join("")
         }
@@ -322,43 +383,112 @@
         // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part19.pdf'
         //const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part80.pdf'
         // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part35.pdf'
-        const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part53.pdf'
+
+        // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part53.pdf'
+
+        // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part4.pdf' // Funny ligatures in kicker: CONTEntS
+
+
+
+
+        // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part26.pdf' // Wierd composit
+        // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part27.pdf' // Wierd composit
+        // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part37.pdf' // Wierd composit
+        // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part42.pdf' // Wierd composit
+        // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part43.pdf' // Wierd composit
+
+        // const url = 'http://jentak-dev:8888/web/stuff/660d327bd041023260864b9c_Part77.pdf' // missing exported image
+        const url = "http://jentak-dev:8888/web/660d327bd041023260864b9c.pdf"
+        let pageToLoad = 25
+
 
         pdfjsLib.GlobalWorkerOptions.workerSrc = '../src/pdf.worker.js'
         pdfjsLib.getDocument({
               url: url,
               useSystemFonts: false,
         }).promise.then(pdf => {
+            console.log(pdf)
+            // pdf.getMetadata().then(metadata => {
+            //   console.log(metadata)
+            // })
             const pages = Array.from({ length: pdf.numPages }, (_, i) => i + 1)
             const container = document.getElementById('pdf-container')
             const textContainer = document.getElementById('pdf-text-container')
 
-            //pages.forEach(pageNumber => {
-                pdf.getPage(1).then(page => {
-                    const scale = 2.5
-                    const viewport = page.getViewport({ scale })
 
-                    const pdfCanvas = document.createElement('canvas')
-                          pdfCanvas.height = viewport.height
-                          pdfCanvas.width = viewport.width
+            function renderPage(pageToLoad) {
 
-                    const context = pdfCanvas.getContext('2d')
-                    // canvas.style.opacity = 1
+              window.debugDrawing = false
+              window.replaceGraphics = false
+              window.replaceColor = "#cccccc"
+              window.replaceColorSecondary = "#cccccc"
+              window.replaceColorText = "black"
+              window.imageBoundBoxPrecision = 8 // lower is more precise must be > 0
 
-                    const structure = document.createElement('section')
+              // Clean up previous page
+              document.getElementById('font-debug').innerHTML = ""
+              document.getElementById('pdf-draw-debug').innerHTML = ""
+              document.getElementById('pdf-extracted-images').innerHTML = ""
+              document.querySelector('#pdf-text-container').innerHTML = ""
+              document.querySelector('.pdf-canvas-original')?.remove()
+              document.querySelector('.pdf-canvas')?.remove()
+              document.querySelector('.textLayer')?.remove()
+              document.querySelector('#pdf-container section')?.remove()
 
-                    structure.style.position = 'absolute'
-                    structure.style.top = '0'
-                    structure.style.left = '0'
-                    structure.style.width = viewport.width
-                    structure.style.height = viewport.height
-                    structure.style.border = '1px solid red'
-                    structure.style.zIndex = 1
 
-                    container.appendChild(pdfCanvas)
-                    container.appendChild(textContainer)
 
-                    window.imageDrawCalls = []
+              pdf.getPage(pageToLoad).then(page => {
+                  const scale = 2.5
+                  const viewport = page.getViewport({ scale })
+
+                  const pdfCanvasOriginal = document.createElement('canvas')
+                        pdfCanvasOriginal.height = viewport.height
+                        pdfCanvasOriginal.width = viewport.width
+                        pdfCanvasOriginal.classList.add('pdf-canvas-original')
+
+                  const pdfCanvas = document.createElement('canvas')
+                        pdfCanvas.height = viewport.height
+                        pdfCanvas.width = viewport.width
+                        pdfCanvas.classList.add('pdf-canvas')
+
+                  const context = pdfCanvas.getContext('2d')
+                  const contextOriginal = pdfCanvasOriginal.getContext('2d')
+
+                  // canvas.style.opacity = 1
+
+                  const structure = document.createElement('section')
+
+                  structure.style.position = 'absolute'
+                  structure.style.top = '0'
+                  structure.style.left = '0'
+                  structure.style.width = viewport.width
+                  structure.style.height = viewport.height
+                  structure.style.zIndex = 10
+
+                  container.appendChild(pdfCanvasOriginal)
+                  container.appendChild(pdfCanvas)
+                  container.appendChild(textContainer)
+
+                  window.imageDrawCalls = []
+                  window.colGen = new UniqueColorGenerator()
+
+                  const originalRender = page.render({
+                      canvasContext: contextOriginal,
+                      viewport
+                  })
+
+                  originalRender.promise.then(() => {
+                    console.log("Did render original")
+
+
+                    window.debugDrawing = true
+                    window.replaceGraphics = true
+                    window.replaceColor = "#cccccc"
+                    window.replaceColorSecondary = "#cccccc"
+                    window.replaceColorText = "black"
+                    window.imageBoundBoxPrecision = 8 // lower is more precise must be > 0
+                    window.outputCanvas = pdfCanvas
+
                     const render = page.render({
                         canvasContext: context,
                         viewport
@@ -366,18 +496,56 @@
 
                     render.promise.then(() => {
                       console.log("Did render")
-                      for (const i of window.imageDrawCalls) {
-                        const fillRate = (i.w * i.h) / (pdfCanvas.width * pdfCanvas.height)
-                        if (fillRate > 0.8) {
-                          // continue
+                      console.log(window.imageDrawCalls)
+
+                      const debugContainer = document.getElementById("pdf-draw-debug")
+                      const extractedImagesContainer = document.getElementById("pdf-extracted-images")
+                      const fontDebugContainer = document.getElementById("font-debug")
+
+                      console.log("Native fonts")
+                      console.log(window.nativeFonts)
+
+
+                      window.nativeFonts.sort(f => f.info.name).forEach(font => {
+                        const fontElement = document.createElement('textarea')
+
+                        if (font.info.name == "WJRBNK+Prelo-Bold") {
+                          console.log(font.info, font.face)
+                          console.log(font.data)
+
+                          // Create a blob of the font data
+
+                          const blob = new Blob([font.data], { type: 'application/octet-stream' })
+                          const url = URL.createObjectURL(blob)
+                          console.log(url, font.info.name, page, font.info.loadedName)
+
+                          downloadURL(url, `${font.info.name}-${pageToLoad}-${font.info.loadedName}.woff`)
                         }
 
-                        const canvas = document.createElement("canvas")
-                        const localCtx = canvas.getContext("2d")
-                        canvas.width = i.imageData.bitmap.width
-                        canvas.height = i.imageData.bitmap.height
-                        localCtx.drawImage(i.imageData.bitmap, 0, 0, canvas.width, canvas.height)
 
+                        // All letters in the alphabet, upper and lower case, all digits, and some special characters
+                        fontElement.textContent = font.availableChars
+                        fontElement.style.fontFamily = font.face.family
+
+                        const fontDetails = document.createElement('pre')
+                        fontDetails.textContent = font.info.name
+
+                        fontDebugContainer.appendChild(fontDetails)
+                        fontDebugContainer.appendChild(fontElement)
+                      })
+
+                      Promise.all(window.imageDrawCalls.map(i => i.state)).then((data) => {
+                        console.log("All states done")
+                        console.log(data)
+
+                        data.forEach(blobURL => {
+                          const drawDebugImage = document.createElement('img')
+                          drawDebugImage.src = blobURL
+                          debugContainer.appendChild(drawDebugImage)
+                        })
+                      })
+
+                      for (const i of window.imageDrawCalls) {
                         const imageElement = document.createElement("img")
 
                         imageElement.style.position = 'absolute'
@@ -386,23 +554,24 @@
                         imageElement.style.width = i.w
                         imageElement.style.height = i.h
 
+                        const canvasElement = document.createElement("canvas")
+                        const ctx = canvasElement.getContext("2d")
 
-                        // structure.appendChild(imageElement)
+                        canvasElement.width = i.imageData.width
+                        canvasElement.height = i.imageData.height
 
-                        canvas.toBlob(blob => {
-                          const url = URL.createObjectURL(blob);
-                          imageElement.src = url
-                          // console.log(imgData.ref)
-                          // console.log(x,y,w,h)
-                          console.log(url)
-                          console.log(i)
+                        ctx.drawImage(i.imageData, 0, 0, i.imageData.width, i.imageData.height)
 
-                        }, "image/png")
+                        // imageElement.src = canvasElement.toDataURL()
+                        const extractedImage = document.createElement('img')
+                        extractedImage.src = canvasElement.toDataURL()
+
+                        extractedImagesContainer.appendChild(extractedImage)
+                        structure.appendChild(imageElement)
                       }
                     })
 
                     // Text render
-
                     const readableStream = page.streamTextContent({
                         includeMarkedContent: true,
                         disableNormalization: true,
@@ -562,21 +731,141 @@
 
 
                 })
-            //})
+              })
+            }
+
+            // Step pages with arrow keys
+            document.addEventListener('keydown', (e) => {
+              if (e.key === "ArrowRight") {
+                pageToLoad++
+                if (pageToLoad > pdf.numPages) {
+                  pageToLoad = 1
+                }
+                renderPage(pageToLoad)
+              }
+
+              if (e.key === "ArrowLeft") {
+                pageToLoad--
+                if (pageToLoad < 1) {
+                  pageToLoad = pdf.numPages
+                }
+                renderPage(pageToLoad)
+              }
+            })
+
+            renderPage(pageToLoad)
+
         })
-
-
     </script>
 
     <head>
         <title>Test</title>
     </head>
     <body>
-        <div id="pdf-container">
-            <div id="pdf-text-container" class="textLayer"></div>
-        </div>
+      <div id="pdf-container">
+        <div id="pdf-text-container" class="textLayer"></div>
+      </div>
+      <div id="font-debug"></div>
+      <div id="pdf-draw-debug">
+      </div>
+      <div id="pdf-extracted-images"></div>
     </body>
     <style>
+        body {
+          display: flex;
+          background: white;
+          align-items: flex-start;
+        }
+
+        #font-debug {
+          display: block;
+          font-size: 20px;
+          max-width: 500px;
+          padding: 20px;
+          background: lightgray;
+          border-left: 53px solid black;
+
+          textarea {
+            width: 400px;
+            word-wrap: break-word;
+            margin-bottom: 25px;
+            font-size: 18px;
+            height: 130px;
+            padding: 15px;
+          }
+
+          pre {
+            margin: 0;
+            font-size: 15px;
+          }
+        }
+
+        #pdf-draw-debug {
+          border-left: 6px solid black;
+          border-right: 6px solid black;
+        }
+
+        .pdf-canvas-original {
+          position: relative;
+          top: 0;
+          left: 0;
+          z-index: 2;
+        }
+
+        .pdf-canvas {
+          position: absolute;
+          top: 0;
+          left: 0;
+          z-index: 0;
+        }
+
+        #pdf-draw-debug {
+          background: lightgray;
+          flex-basis: 50%;
+          height: fit-content;
+        }
+
+        #pdf-extracted-images {
+          background-color: #e2e2e2;
+          background-image: linear-gradient(45deg, #c8c8c8 25%, transparent 25%), linear-gradient(-45deg, #c8c8c8 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #c8c8c8 75%), linear-gradient(-45deg, transparent 75%, #c8c8c8 75%);
+          background-size: 20px 20px;
+          background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+
+
+
+          canvas {
+            height: 300px;
+            margin: 20px;
+          }
+
+          img {
+              max-width: 600px;
+              height: auto;
+              margin: 15px;
+              max-height: fit-content;
+          }
+        }
+
+
+        #pdf-draw-debug, #pdf-extracted-images {
+          height: auto;
+          display: flex;
+          flex-wrap: wrap;
+          align-content: flex-start;
+          justify-content: flex-start;
+          flex-direction: row;
+        }
+
+        #pdf-draw-debug {
+          img {
+            height: 280px;
+            width: fit-content;
+            border: 1px solid;
+            margin: 10px;
+
+          }
+        }
+
         .text-block {
           &::after {
             content: "";
@@ -591,6 +880,7 @@
 
         section img {
           border: 2px solid rgb(255, 145, 0);
+          pointer-events: none;
         }
 
         .text-line {
@@ -619,11 +909,6 @@
         }
 
         #pdf-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            width: fit-content;
-            height: fit-content;
             position: relative;
         }
         #page {
@@ -667,7 +952,7 @@
           text-align:initial;
           inset:0;
           overflow:hidden;
-          z-index:2;
+          z-index: 15;
           width: 100%;
           height: 100%;
         }
