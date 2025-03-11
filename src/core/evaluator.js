@@ -1757,6 +1757,9 @@ class PartialEvaluator {
 
         switch (fn | 0) {
           case OPS.paintXObject:
+
+          // Toggle images
+            // continue
             // eagerly compile XForm objects
             isValidName = args[0] instanceof Name;
             name = args[0].name;
@@ -2714,7 +2717,7 @@ class PartialEvaluator {
           }
 
           resetLastChars();
-          flushTextContentItem();
+          flushTextContentItem(textState);
           return true;
         }
 
@@ -2735,7 +2738,7 @@ class PartialEvaluator {
             // order to avoid too much shift between the canvas and the text
             // layer.
             resetLastChars();
-            flushTextContentItem();
+            flushTextContentItem(textState);
             pushWhitespace({ height: Math.abs(advanceY) });
           } else {
             textContentItem.height += advanceY;
@@ -2756,7 +2759,7 @@ class PartialEvaluator {
         }
 
         if (Math.abs(advanceX) > textContentItem.width * VERTICAL_SHIFT_RATIO) {
-          flushTextContentItem();
+          flushTextContentItem(textState);
         }
 
         return true;
@@ -2780,7 +2783,7 @@ class PartialEvaluator {
         // We're moving back so in case the last char was a whitespace
         // we cancel it: it doesn't make sense to insert it.
         resetLastChars();
-        flushTextContentItem();
+        flushTextContentItem(textState);
         return true;
       }
 
@@ -2801,7 +2804,7 @@ class PartialEvaluator {
           // order to avoid too much shift between the canvas and the text
           // layer.
           resetLastChars();
-          flushTextContentItem();
+          flushTextContentItem(textState);
           pushWhitespace({ width: Math.abs(advanceX) });
         } else {
           textContentItem.width += advanceX;
@@ -2818,7 +2821,7 @@ class PartialEvaluator {
       }
 
       if (Math.abs(advanceY) > textContentItem.height * VERTICAL_SHIFT_RATIO) {
-        flushTextContentItem();
+        flushTextContentItem(textState);
       }
 
       return true;
@@ -2949,7 +2952,7 @@ class PartialEvaluator {
       resetLastChars();
       if (textContentItem.initialized) {
         textContentItem.hasEOL = true;
-        flushTextContentItem();
+        flushTextContentItem(textState);
       } else {
         textContent.items.push({
           str: "",
@@ -2983,7 +2986,7 @@ class PartialEvaluator {
         width = 0;
       }
 
-      flushTextContentItem();
+      flushTextContentItem(textState);
       resetLastChars();
       pushWhitespace({
         width: Math.abs(width),
@@ -2995,7 +2998,7 @@ class PartialEvaluator {
       return true;
     }
 
-    function flushTextContentItem() {
+    function flushTextContentItem(_textState) {
       if (!textContentItem.initialized || !textContentItem.str) {
         return;
       }
@@ -3009,7 +3012,19 @@ class PartialEvaluator {
           textContentItem.height * textContentItem.textAdvanceScale;
       }
 
-      textContent.items.push(runBidiTransform(textContentItem));
+
+      const textState = _textState.clone()
+      const textItem = runBidiTransform(textContentItem)
+
+      // console.log("Flush", textState)
+
+      textItem.textFill = [...textState.textFill]
+      textItem.documentFontName = textState.fontName
+      textItem.originalFontName = textState.font.name
+      textItem.fontFallbackName = textState.font.fallbackName
+      textItem.font = textState.font
+
+      textContent.items.push(textItem);
       textContentItem.initialized = false;
       textContentItem.str.length = 0;
     }
@@ -3042,6 +3057,10 @@ class PartialEvaluator {
       };
       task.ensureNotTerminated();
       timeSlotManager.reset();
+      const opsmap = Object.entries(OPS).reduce((acc, [key, value]) => {
+        acc[value] = key
+        return acc
+      })
 
       const operation = {};
       let stop,
@@ -3058,8 +3077,16 @@ class PartialEvaluator {
 
         const previousState = textState;
         textState = stateManager.state;
+
+        //Todo. Store font extras from state.
+        //console.log(textState)
+
         const fn = operation.fn;
         args = operation.args;
+
+        //Debug ops
+        //console.log(opsmap[fn])
+
 
         switch (fn | 0) {
           case OPS.setFont:
@@ -3074,11 +3101,19 @@ class PartialEvaluator {
               break;
             }
 
-            flushTextContentItem();
+            flushTextContentItem(textState);
             textState.fontName = fontNameArg;
             textState.fontSize = fontSizeArg;
             next(handleSetFont(fontNameArg, null));
             return;
+          case OPS.setFillColor:
+            // console.log("TEXT FILL", args)
+            textState.textFill = [...args];
+            break;
+          case OPS.setFillRGBColor:
+            // console.log("TEXT FILL", args)
+            textState.textFill = [...args];
+            break;
           case OPS.setTextRise:
             textState.textRise = args[0];
             break;
@@ -3204,7 +3239,7 @@ class PartialEvaluator {
             });
             break;
           case OPS.paintXObject:
-            flushTextContentItem();
+            flushTextContentItem(textState);
             if (!xobjs) {
               xobjs = resources.get("XObject") || Dict.empty;
             }
@@ -3358,7 +3393,7 @@ class PartialEvaluator {
                   resolveGState();
                   return;
                 }
-                flushTextContentItem();
+                flushTextContentItem(textState);
 
                 textState.fontName = null;
                 textState.fontSize = gStateFont[1];
@@ -3381,7 +3416,7 @@ class PartialEvaluator {
             );
             return;
           case OPS.beginMarkedContent:
-            flushTextContentItem();
+            flushTextContentItem(textState);
             if (includeMarkedContent) {
               markedContentData.level++;
 
@@ -3392,7 +3427,7 @@ class PartialEvaluator {
             }
             break;
           case OPS.beginMarkedContentProps:
-            flushTextContentItem();
+            flushTextContentItem(textState);
             if (includeMarkedContent) {
               markedContentData.level++;
 
@@ -3410,7 +3445,7 @@ class PartialEvaluator {
             }
             break;
           case OPS.endMarkedContent:
-            flushTextContentItem();
+            flushTextContentItem(textState);
             if (includeMarkedContent) {
               if (markedContentData.level === 0) {
                 // Handle unbalanced beginMarkedContent/endMarkedContent
@@ -3431,7 +3466,7 @@ class PartialEvaluator {
                 previousState.fontSize !== textState.fontSize ||
                 previousState.fontName !== textState.fontName)
             ) {
-              flushTextContentItem();
+              flushTextContentItem(textState);
             }
             break;
         } // switch
@@ -3445,7 +3480,7 @@ class PartialEvaluator {
         next(deferred);
         return;
       }
-      flushTextContentItem();
+      flushTextContentItem(textState);
       enqueueChunk();
       resolve();
     }).catch(reason => {
@@ -3459,7 +3494,7 @@ class PartialEvaluator {
             `task: "${reason}".`
         );
 
-        flushTextContentItem();
+        flushTextContentItem(textState);
         enqueueChunk();
         return;
       }
@@ -4516,6 +4551,11 @@ class PartialEvaluator {
     const newProperties = await this.extractDataStructures(dict, properties);
     this.extractWidths(dict, descriptor, newProperties);
 
+    if (properties.name == "WJRBNK+Prelo-Bold") {
+      console.log(dict)
+      console.log(fontFile)
+    }
+
     return new Font(fontName.name, fontFile, newProperties);
   }
 
@@ -4565,6 +4605,10 @@ class PartialEvaluator {
 
 class TranslatedFont {
   constructor({ loadedName, font, dict, evaluatorOptions }) {
+    if (font.name == "WJRBNK+Prelo-Bold") {
+      console.log("TranslatedFont", loadedName, font, dict, evaluatorOptions);
+    }
+
     this.loadedName = loadedName;
     this.font = font;
     this.dict = dict;
@@ -4808,6 +4852,7 @@ class TextState {
     this.leading = 0;
     this.textHScale = 1;
     this.textRise = 0;
+    this.textFill = [0, 0, 0];
   }
 
   setTextMatrix(a, b, c, d, e, f) {

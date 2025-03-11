@@ -164,6 +164,9 @@ function getAscent(fontFamily) {
 
 function appendText(task, geom, styles) {
   // Initialize all used properties to keep the caches monomorphic.
+  
+  
+
   const textDiv = document.createElement("span");
   const textDivProperties = {
     angle: 0,
@@ -171,12 +174,19 @@ function appendText(task, geom, styles) {
     hasText: geom.str !== "",
     hasEOL: geom.hasEOL,
     fontSize: 0,
+    fontName: geom.fontName,
   };
   task._textDivs.push(textDiv);
 
   const tx = Util.transform(task._transform, geom.transform);
   let angle = Math.atan2(tx[1], tx[0]);
+  
+  
   const style = styles[geom.fontName];
+  
+  // console.log(geom, style)
+  
+
   if (style.vertical) {
     angle += Math.PI / 2;
   }
@@ -214,6 +224,18 @@ function appendText(task, geom, styles) {
 
   // Keeps screen readers from pausing on every new text span.
   textDiv.setAttribute("role", "presentation");
+
+  //console.log(geom)
+  //textDiv.style.fontFamily = geom.fontName;
+  textDiv.textProps = geom;
+  textDiv.setAttribute("data-font", geom.originalFontName);
+  textDiv.style.lineHeight = "0.9em";
+
+  if (geom.textFill) {
+    // console.log(geom.textFill)
+    textDiv.style.color = `rgb(${geom.textFill[0] * 255}, ${geom.textFill[1] * 255}, ${geom.textFill[2] * 255})`;
+  }
+
 
   textDiv.textContent = geom.str;
   // geom.dir may be 'ttb' for vertical texts.

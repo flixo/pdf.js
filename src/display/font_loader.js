@@ -125,8 +125,16 @@ class FontLoader {
     }
 
     if (this.isFontLoadingAPISupported) {
+      // Modified
+      // Copy the font data
+      var fontData = new ArrayBuffer(font.rawFont.data.byteLength);
+      new Uint8Array(fontData).set(new Uint8Array(font.rawFont.data));
+
       const nativeFontFace = font.createNativeFontFace();
       if (nativeFontFace) {
+        window.nativeFonts = window.nativeFonts || [];
+        window.nativeFonts.push({face: nativeFontFace, info: font, data: fontData, availableChars: font.rawFont.availableChars});
+
         this.addNativeFontFace(nativeFontFace);
         try {
           await nativeFontFace.loaded;

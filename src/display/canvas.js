@@ -218,6 +218,17 @@ class CachedCanvases {
   }
 }
 
+function rotatePoint(x, y, cx, cy, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  const nx = cx + (x - cx) * cos - (y - cy) * sin;
+  const ny = cy + (x - cx) * sin + (y - cy) * cos;
+
+  return { x: nx, y: ny };
+}
+
+
 function drawImageAtIntegerCoords(
   ctx,
   srcImg,
@@ -257,11 +268,16 @@ function drawImageAtIntegerCoords(
     // We must apply a transformation in order to apply it on the image itself.
     // For example if a == 1 && d == -1, it means that the image itself is
     // mirrored w.r.t. the x-axis.
+    // console.log("Drawing image at", rTlX, rTlY, rWidth, rHeight)
     ctx.setTransform(Math.sign(a), 0, 0, Math.sign(d), rTlX, rTlY);
+
     ctx.drawImage(srcImg, srcX, srcY, srcW, srcH, 0, 0, rWidth, rHeight);
+    // ctx.fillStyle = "red"
+    // ctx.fillRect(srcX, srcY, rWidth, rHeight)
     ctx.setTransform(a, b, c, d, tx, ty);
 
-    return [rWidth, rHeight];
+
+    return [rWidth, rHeight, rTlX, rTlY];
   }
 
   if (a === 0 && d === 0) {
@@ -279,7 +295,7 @@ function drawImageAtIntegerCoords(
     ctx.drawImage(srcImg, srcX, srcY, srcW, srcH, 0, 0, rHeight, rWidth);
     ctx.setTransform(a, b, c, d, tx, ty);
 
-    return [rHeight, rWidth];
+    return [rHeight, rWidth, rTlX, rTlY];
   }
 
   // Not a scale matrix so let the render handle the case without rounding.
@@ -287,7 +303,22 @@ function drawImageAtIntegerCoords(
 
   const scaleX = Math.hypot(a, b);
   const scaleY = Math.hypot(c, d);
-  return [scaleX * destW, scaleY * destH];
+
+  console.log("DRAW IMG", getCurrentTransform(ctx))
+
+  const w = (scaleX * destW)
+  const h = (scaleY * destH)
+  const rad = Math.atan2(b, a);
+  console.log("RAD", rad)
+  console.log(destX, destY)
+
+  const out = rotatePoint(tx, ty, tx, ty, rad)
+
+  //newX = X2 * cos(90 - Angle) - Y2 * sin(90 - Angle);
+  //newY = X2 * sin(90 - Angle) + Y2 * cos(90 - Angle);
+
+
+  return [w, h, tx + (scaleX * destX), ty + (scaleY * destY)];
 }
 
 function compileType3Glyph(imgData) {
@@ -896,9 +927,12 @@ class CanvasGraphics {
     const height = this.ctx.canvas.height;
 
     const savedFillStyle = this.ctx.fillStyle;
-    this.ctx.fillStyle = background || "#ffffff";
+    this.ctx.fillStyle = "transparent" || background || "#ffffff";
     this.ctx.fillRect(0, 0, width, height);
     this.ctx.fillStyle = savedFillStyle;
+    if (window.replaceGraphics) {
+      this.ctx.fillStyle = window.replaceColor
+    }
 
     if (transparency) {
       const transparentCanvas = this.cachedCanvases.getCanvas(
@@ -1257,6 +1291,10 @@ class CanvasGraphics {
       ? fillColor.getPattern(ctx, this, inverse, PathType.FILL)
       : fillColor;
 
+    if (window.replaceGraphics) {
+      fillCtx.fillStyle = window.replaceColor
+    }
+
     fillCtx.fillRect(0, 0, width, height);
 
     if (cache && !isPatternFill) {
@@ -1511,6 +1549,9 @@ class CanvasGraphics {
         if (backdrop.some(c => c !== 0)) {
           ctx.globalCompositeOperation = "destination-atop";
           ctx.fillStyle = Util.makeHexColor(...backdrop);
+          if (window.replaceGraphics) {
+            ctx.fillStyle = window.replaceColor
+          }
           ctx.fillRect(0, 0, width, height);
           ctx.globalCompositeOperation = "source-over";
         }
@@ -1526,6 +1567,9 @@ class CanvasGraphics {
         maskCtx.clip(clip);
         maskCtx.globalCompositeOperation = "destination-atop";
         maskCtx.fillStyle = Util.makeHexColor(...backdrop);
+        if (window.replaceGraphics) {
+          maskCtx.fillStyle = window.replaceColor
+        }
         maskCtx.fillRect(maskX, maskY, width, height);
         maskCtx.restore();
       }
@@ -1616,6 +1660,7 @@ class CanvasGraphics {
     let startX, startY;
     const currentTransform = getCurrentTransform(ctx);
 
+
     // Most of the time the current transform is a scaling matrix
     // so we don't need to transform points before computing min/max:
     // we can compute min/max first and then smartly "apply" the
@@ -1626,7 +1671,9 @@ class CanvasGraphics {
       (currentTransform[0] === 0 && currentTransform[3] === 0) ||
       (currentTransform[1] === 0 && currentTransform[2] === 0);
     const minMaxForBezier = isScalingMatrix ? minMax.slice(0) : null;
-
+    //console.log(ops)
+    const lineToCalls = []
+    const closeCalls = []
     for (let i = 0, j = 0, ii = ops.length; i < ii; i++) {
       switch (ops[i] | 0) {
         case OPS.rectangle:
@@ -1649,6 +1696,14 @@ class CanvasGraphics {
             current.updateRectMinMax(currentTransform, [x, y, xw, yh]);
           }
           ctx.closePath();
+          // Do stuff here.
+
+          // console.log("Filling with", ctx.fillStyle, ctx)
+          // ctx.strokeStyle = "yellow"
+          // ctx.lineWidth = 4
+          // ctx.stroke();
+
+
           break;
         case OPS.moveTo:
           x = args[j++];
@@ -1659,8 +1714,10 @@ class CanvasGraphics {
           }
           break;
         case OPS.lineTo:
+          //console.log("Line to")
           x = args[j++];
           y = args[j++];
+          lineToCalls.push([x, y])
           ctx.lineTo(x, y);
           if (!isScalingMatrix) {
             current.updatePathMinMax(currentTransform, x, y);
@@ -1742,7 +1799,22 @@ class CanvasGraphics {
           break;
         case OPS.closePath:
           ctx.closePath();
+          closeCalls.push(true)
           break;
+      }
+
+      // Here we can do stuff
+      if (closeCalls.length == 0 && lineToCalls.length >= 1 && false) {
+        const firstStroke = lineToCalls[0]
+        const lastStroke = lineToCalls[lineToCalls.length - 1]
+        console.log(firstStroke, lastStroke)
+        // if (firstStroke[0] !== lastStroke[0] || firstStroke[1] !== lastStroke[1]) {
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = "red";
+          ctx.stroke()
+          console.log(lineToCalls, closeCalls)
+        // }
+
       }
     }
 
@@ -1772,6 +1844,9 @@ class CanvasGraphics {
           getCurrentTransformInverse(ctx),
           PathType.STROKE
         );
+        if (window.replaceGraphics == true) {
+          ctx.strokeStyle = window.replaceColor
+        }
         this.rescaleAndStroke(/* saveRestore */ false);
         ctx.restore();
       } else {
@@ -1804,6 +1879,9 @@ class CanvasGraphics {
         getCurrentTransformInverse(ctx),
         PathType.FILL
       );
+      if (window.replaceGraphics) {
+        ctx.fillStyle = window.replaceColor
+      }
       needRestore = true;
     }
 
@@ -2119,6 +2197,8 @@ class CanvasGraphics {
     ctx.transform(...current.textMatrix);
     ctx.translate(current.x, current.y + current.textRise);
 
+    // console.log(string, current.x, current.y + current.textRise)
+
     if (fontDirection > 0) {
       ctx.scale(textHScale, -1);
     } else {
@@ -2137,6 +2217,13 @@ class CanvasGraphics {
       patternTransform = getCurrentTransform(ctx);
       ctx.restore();
       ctx.fillStyle = pattern;
+      if (window.replaceGraphics) {
+        ctx.fillStyle = window.replaceColorText
+      }
+    }
+
+    if (window.replaceGraphics) {
+      ctx.fillStyle = window.replaceColorText;
     }
 
     let lineWidth = current.lineWidth;
@@ -2168,6 +2255,7 @@ class CanvasGraphics {
         chars.push(glyph.unicode);
         width += glyph.width;
       }
+
       ctx.fillText(chars.join(""), 0, 0);
       current.x += width * widthAdvanceScale * textHScale;
       ctx.restore();
@@ -2387,12 +2475,18 @@ class CanvasGraphics {
   setStrokeRGBColor(r, g, b) {
     const color = Util.makeHexColor(r, g, b);
     this.ctx.strokeStyle = color;
+    if (window.replaceGraphics == true) {
+      this.ctx.strokeStyle = window.replaceColor
+    }
     this.current.strokeColor = color;
   }
 
   setFillRGBColor(r, g, b) {
     const color = Util.makeHexColor(r, g, b);
     this.ctx.fillStyle = color;
+    if (window.replaceGraphics) {
+      this.ctx.fillStyle = window.replaceColorSecondary
+    }
     this.current.fillColor = color;
     this.current.patternFill = false;
   }
@@ -2425,6 +2519,10 @@ class CanvasGraphics {
       getCurrentTransformInverse(ctx),
       PathType.SHADING
     );
+
+    if (window.replaceGraphics) {
+      ctx.fillStyle = window.replaceColor
+    }
 
     const inv = getCurrentTransformInverse(ctx);
     if (inv) {
@@ -2829,6 +2927,9 @@ class CanvasGraphics {
             PathType.FILL
           )
         : fillColor;
+      if (window.replaceGraphics) {
+        maskCtx.fillStyle = window.replaceColor
+      }
       maskCtx.fillRect(0, 0, width, height);
 
       maskCtx.restore();
@@ -2857,6 +2958,7 @@ class CanvasGraphics {
     if (!this.contentVisible) {
       return;
     }
+
     const imgData = this.getObject(objId);
     if (!imgData) {
       warn("Dependent image isn't ready yet");
@@ -2974,9 +3076,46 @@ class CanvasGraphics {
       imgData.interpolate
     );
 
+    var toDraw = scaled.img;
+
+    // Get unique color for this image mapping
+    const uniqueColor = window.colGen.nextColor()
+
+    if (window.replaceGraphics) {
+      // Create temporary canvas to manipulate source image
+      const imgSouceCanvas = document.createElement('canvas')
+      imgSouceCanvas.height = scaled.img.height
+      imgSouceCanvas.width = scaled.img.width
+
+      const imgSourceCtx = imgSouceCanvas.getContext('2d')
+      imgSourceCtx.drawImage(scaled.img, 0, 0)
+
+      // Get image data
+      const imageSourceData = imgSourceCtx.getImageData(0, 0, imgSouceCanvas.width, imgSouceCanvas.height)
+
+      // Iterate the source image data
+      for (let i = 0; i < imageSourceData.data.length; i += 4) {
+        if (imageSourceData.data[i] > 250 && imageSourceData.data[i + 1] > 250 && imageSourceData.data[i + 2] > 250) {
+          // Make all near white pixels transparent in source image
+          imageSourceData.data[i + 0] = 0
+          imageSourceData.data[i + 1] = 0
+          imageSourceData.data[i + 2] = 0
+          imageSourceData.data[i + 3] = 0
+        } else {
+          // Make all other pixels a unique color that we can use to find the bounding box in the composite output
+          imageSourceData.data[i] = uniqueColor[0]
+          imageSourceData.data[i + 1] = uniqueColor[1]
+          imageSourceData.data[i + 2] = uniqueColor[2]
+        }
+      }
+
+      imgSourceCtx.putImageData(imageSourceData, 0, 0)
+      toDraw = imgSouceCanvas
+    }
+
     drawImageAtIntegerCoords(
       ctx,
-      scaled.img,
+      toDraw,
       0,
       0,
       scaled.paintWidth,
@@ -2986,8 +3125,86 @@ class CanvasGraphics {
       width,
       height
     );
+
     this.compose();
     this.restore();
+
+    if (window.replaceGraphics && window.outputCanvas) {
+      // Check that we are drawing on main canvas and not in a mask
+
+      const {width: ow, height: oh} = window.outputCanvas
+      const {width: tw, height: th} = this.ctx.canvas
+
+
+
+      if (ow == tw && oh == th) {
+        var imageData = scaled.img
+
+        // If the image data is a canvas, we need draw that to a new canvas, since the original
+        // canvas might be reused for other composit operations
+
+        if (imageData instanceof HTMLElement) {
+          const imageCanvas = document.createElement('canvas')
+          imageCanvas.width = imageData.width
+          imageCanvas.height = imageData.height
+          const imageCtx = imageCanvas.getContext('2d')
+          imageCtx.drawImage(imageData, 0, 0)
+
+          imageData = imageCanvas
+        }
+
+        const dc = {
+          imageData: imageData,
+          xRef: imgData,
+          x: 0, y: 0, w: 0, h: 0,
+          smallestX: Infinity,
+          largestX: -Infinity,
+          smallestY: Infinity,
+          largestY: -Infinity
+        }
+
+        const currentCompositeData = this.ctx.getImageData(0, 0, this.ctx.canvas.width, this.ctx.canvas.height)
+
+        // Find bounding box
+        for (let i = 0; i < currentCompositeData.data.length; i += 4 * window.imageBoundBoxPrecision ) {
+          const rgbArr = [currentCompositeData.data[i], currentCompositeData.data[i + 1], currentCompositeData.data[i + 2]]
+          if (rgbArr[0] == uniqueColor[0] && rgbArr[1] == uniqueColor[1] && rgbArr[2] == uniqueColor[2]) {
+            const x = (i / 4) % this.ctx.canvas.width
+            const y = Math.floor((i / 4) / this.ctx.canvas.width)
+
+            dc.smallestX = Math.min(dc.smallestX, x)
+            dc.largestX = Math.max(dc.largestX, x)
+            dc.smallestY = Math.min(dc.smallestY, y)
+            dc.largestY = Math.max(dc.largestY, y)
+          }
+        }
+
+        // Set bounding box in pos, width, height format
+        dc.x = dc.smallestX
+        dc.y = dc.smallestY
+        dc.w = dc.largestX - dc.smallestX
+        dc.h = dc.largestY - dc.smallestY
+
+        // Expand bounding box 10 in each direction
+        dc.x = Math.max(dc.x - 10, 0)
+        dc.y = Math.max(dc.y - 10, 0)
+        dc.w = Math.min(dc.w + 20, this.ctx.canvas.width - dc.x)
+        dc.h = Math.min(dc.h + 20, this.ctx.canvas.height - dc.y)
+
+
+        // Debug
+        if (window.debugDrawing) {
+          dc.state = new Promise((resolve, reject) => {
+            this.ctx.canvas.toBlob(blob => {
+              resolve(URL.createObjectURL(blob))
+            }, "image/png")
+          })
+        }
+
+        window.imageDrawCalls = window.imageDrawCalls || []
+        window.imageDrawCalls.push(dc)
+      }
+    }
   }
 
   paintInlineImageXObjectGroup(imgData, map) {
