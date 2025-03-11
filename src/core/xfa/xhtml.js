@@ -81,20 +81,19 @@ const StyleMapping = new Map([
   ["kerning-mode", value => (value === "none" ? "none" : "normal")],
   [
     "xfa-font-horizontal-scale",
-    value =>
-      `scaleX(${Math.max(0, Math.min(parseInt(value) / 100)).toFixed(2)})`,
+    value => `scaleX(${Math.max(0, parseInt(value) / 100).toFixed(2)})`,
   ],
   [
     "xfa-font-vertical-scale",
-    value =>
-      `scaleY(${Math.max(0, Math.min(parseInt(value) / 100)).toFixed(2)})`,
+    value => `scaleY(${Math.max(0, parseInt(value) / 100).toFixed(2)})`,
   ],
   ["xfa-spacerun", ""],
   ["xfa-tab-stops", ""],
   [
     "font-size",
     (value, original) => {
-      value = original.fontSize = getMeasurement(value);
+      // The font size must be positive.
+      value = original.fontSize = Math.abs(getMeasurement(value));
       return measureToString(0.99 * value);
     },
   ],
@@ -178,7 +177,7 @@ function mapStyle(styleStr, node, richText) {
   }
 
   if (richText && style.fontSize) {
-    style.fontSize = `calc(${style.fontSize} * var(--scale-factor))`;
+    style.fontSize = `calc(${style.fontSize} * var(--total-scale-factor))`;
   }
 
   fixTextIndent(style);

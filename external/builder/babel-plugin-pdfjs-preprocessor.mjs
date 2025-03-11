@@ -1,10 +1,7 @@
 import { types as t, transformSync } from "@babel/core";
-import fs from "fs";
-import { join as joinPaths } from "path";
 import vm from "vm";
 
 const PDFJS_PREPROCESSOR_NAME = "PDFJSDev";
-const ROOT_PREFIX = "$ROOT/";
 
 function isPDFJSPreprocessor(obj) {
   return obj.type === "Identifier" && obj.name === PDFJS_PREPROCESSOR_NAME;
@@ -40,18 +37,6 @@ function handlePreprocessorAction(ctx, actionName, args, path) {
           return result;
         }
         break;
-      case "json":
-        if (!t.isStringLiteral(arg)) {
-          throw new Error("Path to JSON is not provided");
-        }
-        let jsonPath = arg.value;
-        if (jsonPath.startsWith(ROOT_PREFIX)) {
-          jsonPath = joinPaths(
-            ctx.rootPath,
-            jsonPath.substring(ROOT_PREFIX.length)
-          );
-        }
-        return JSON.parse(fs.readFileSync(jsonPath, "utf8"));
     }
     throw new Error("Unsupported action");
   } catch (e) {
@@ -184,7 +169,7 @@ function babelPluginPDFJSPreprocessor(babel, ctx) {
           path.replaceWith(t.importExpression(source));
         }
       },
-      BlockStatement: {
+      "BlockStatement|StaticBlock": {
         // Visit node in post-order so that recursive flattening
         // of blocks works correctly.
         exit(path) {
@@ -215,6 +200,10 @@ function babelPluginPDFJSPreprocessor(babel, ctx) {
             }
             subExpressionIndex++;
           }
+
+          if (node.type === "StaticBlock" && node.body.length === 0) {
+            path.remove();
+          }
         },
       },
       Function: {
@@ -231,6 +220,26 @@ function babelPluginPDFJSPreprocessor(babel, ctx) {
           ) {
             // Function body ends with return without arg -- removing it.
             body.pop();
+          }
+        },
+      },
+      ClassMethod: {
+        exit(path) {
+          const {
+            node,
+            parentPath: { parent: classNode },
+          } = path;
+          if (
+            // Remove empty constructors. We only do this for
+            // base classes, as the default constructor of derived
+            // classes is not empty (and an empty constructor
+            // must throw at runtime when constructed).
+            node.kind === "constructor" &&
+            node.body.body.length === 0 &&
+            node.params.every(p => p.type === "Identifier") &&
+            !classNode.superClass
+          ) {
+            path.remove();
           }
         },
       },

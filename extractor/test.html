@@ -10,7 +10,11 @@
             "display-fetch_stream": "../src/display/fetch_stream.js",
             "display-network": "../src/display/network.js",
             "display-node_stream": "../src/display/stubs.js",
-            "display-node_utils": "../src/display/stubs.js"
+            "display-node_utils": "../src/display/stubs.js",
+            "display-cmap_reader_factory": "../src/display/cmap_reader_factory.js",
+            "display-standard_fontdata_factory": "../src/display/standard_fontdata_factory.js",
+            "display-standard_fonts": "../src/display/standard_fonts.js",
+            "display-wasm_factory": "../src/display/wasm_factory.js"
           }
         }
     </script>
@@ -505,34 +509,35 @@
                       console.log("Native fonts")
                       console.log(window.nativeFonts)
 
+                      if (window.nativeFonts) {
+                        window.nativeFonts.sort(f => f.info.name).forEach(font => {
+                          const fontElement = document.createElement('textarea')
 
-                      window.nativeFonts.sort(f => f.info.name).forEach(font => {
-                        const fontElement = document.createElement('textarea')
+                          if (font.info.name == "WJRBNK+Prelo-Bold") {
+                            console.log(font.info, font.face)
+                            console.log(font.data)
 
-                        if (font.info.name == "WJRBNK+Prelo-Bold") {
-                          console.log(font.info, font.face)
-                          console.log(font.data)
+                            // Create a blob of the font data
 
-                          // Create a blob of the font data
+                            const blob = new Blob([font.data], { type: 'application/octet-stream' })
+                            const url = URL.createObjectURL(blob)
+                            console.log(url, font.info.name, page, font.info.loadedName)
 
-                          const blob = new Blob([font.data], { type: 'application/octet-stream' })
-                          const url = URL.createObjectURL(blob)
-                          console.log(url, font.info.name, page, font.info.loadedName)
-
-                          downloadURL(url, `${font.info.name}-${pageToLoad}-${font.info.loadedName}.woff`)
-                        }
+                            downloadURL(url, `${font.info.name}-${pageToLoad}-${font.info.loadedName}.woff`)
+                          }
 
 
-                        // All letters in the alphabet, upper and lower case, all digits, and some special characters
-                        fontElement.textContent = font.availableChars
-                        fontElement.style.fontFamily = font.face.family
+                          // All letters in the alphabet, upper and lower case, all digits, and some special characters
+                          fontElement.textContent = font.availableChars
+                          fontElement.style.fontFamily = font.face.family
 
-                        const fontDetails = document.createElement('pre')
-                        fontDetails.textContent = font.info.name
+                          const fontDetails = document.createElement('pre')
+                          fontDetails.textContent = font.info.name
 
-                        fontDebugContainer.appendChild(fontDetails)
-                        fontDebugContainer.appendChild(fontElement)
-                      })
+                          fontDebugContainer.appendChild(fontDetails)
+                          fontDebugContainer.appendChild(fontElement)
+                        })
+                      }
 
                       Promise.all(window.imageDrawCalls.map(i => i.state)).then((data) => {
                         console.log("All states done")
@@ -579,17 +584,27 @@
 
                     const textDivProps = new WeakMap()
                     const textDivs = []
-                    const textLayer = pdfjsLib.renderTextLayer({
-                        textContentSource: readableStream,
-                        container: textContainer,
-                        viewport: viewport,
-                        textDivs: textDivs,
-                        textDivProperties: textDivProps,
-                        isOffscreenCanvasSupported: false,
-                    });
+
+                    // const textLayer = pdfjsLib.renderTextLayer({
+                    //     textContentSource: readableStream,
+                    //     container: textContainer,
+                    //     viewport: viewport,
+                    //     textDivs: textDivs,
+                    //     textDivProperties: textDivProps,
+                    //     isOffscreenCanvasSupported: false,
+                    // });
+                    const textLayer = new pdfjsLib.TextLayer({
+                      textContentSource: readableStream,
+                      container: textContainer,
+                      viewport: viewport,
+                      textDivs: textDivs,
+                      textDivProperties: textDivProps,
+                      isOffscreenCanvasSupported: false,
+                    }).render()
+
 
                     const sizeThresholdPercentual = 0.9
-                    textLayer.promise.then(() => {
+                    textLayer.then(() => {
                       window.requestAnimationFrame(() => {
 
                         const geometry = []
@@ -905,7 +920,8 @@
         }
 
         :root {
-            --scale-factor: 2.5;
+            --total-scale-factor: 2.5;
+
         }
 
         #pdf-container {

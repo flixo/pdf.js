@@ -16,6 +16,7 @@
 import {
   closePages,
   getQuerySelector,
+  getRect,
   getSelector,
   loadAndWait,
 } from "./test_utils.mjs";
@@ -74,13 +75,7 @@ describe("Annotation highlight", () => {
         pages.map(async ([browserName, page]) => {
           for (const i of [23, 22, 14]) {
             await page.click(`[data-annotation-id='${i}R']`);
-            await page.waitForFunction(
-              id =>
-                document.activeElement ===
-                document.querySelector(`#pdfjs_internal_id_${id}R`),
-              {},
-              i
-            );
+            await page.waitForSelector(`#pdfjs_internal_id_${i}R:focus`);
           }
         })
       );
@@ -617,6 +612,70 @@ describe("ResetForm action", () => {
               el => el.hidden
             );
             expect(hidden).withContext(`In ${browserName}`).toEqual(true);
+          })
+        );
+      });
+    });
+  });
+
+  describe("Annotation with empty popup and aria", () => {
+    describe("issue14438.pdf", () => {
+      let pages;
+
+      beforeAll(async () => {
+        pages = await loadAndWait(
+          "highlights.pdf",
+          "[data-annotation-id='693R']"
+        );
+      });
+
+      afterAll(async () => {
+        await closePages(pages);
+      });
+
+      it("must check that the highlight annotation has no popup and no aria-haspopup attribute", async () => {
+        await Promise.all(
+          pages.map(async ([browserName, page]) => {
+            await page.waitForFunction(
+              // No aria-haspopup attribute,
+              `document.querySelector("[data-annotation-id='693R']").ariaHasPopup === null` +
+                // and no popup.
+                `&& document.querySelector("[data-annotation-id='694R']") === null`
+            );
+          })
+        );
+      });
+    });
+  });
+
+  describe("Rotated annotation and its clickable area", () => {
+    describe("issue14438.pdf", () => {
+      let pages;
+
+      beforeAll(async () => {
+        pages = await loadAndWait(
+          "rotated_ink.pdf",
+          "[data-annotation-id='18R']"
+        );
+      });
+
+      afterAll(async () => {
+        await closePages(pages);
+      });
+
+      it("must check that the clickable area has been rotated", async () => {
+        await Promise.all(
+          pages.map(async ([browserName, page]) => {
+            const rect = await getRect(page, "[data-annotation-id='18R']");
+            const promisePopup = page.waitForSelector(
+              "[data-annotation-id='19R']",
+              { visible: true }
+            );
+            await page.mouse.move(
+              rect.x + rect.width * 0.1,
+              rect.y + rect.height * 0.9
+            );
+            await promisePopup;
           })
         );
       });
